@@ -1,0 +1,8 @@
+ligand,ligand_name,pred_dg,pred_dg_error
+Cytisine,Cytisine,-11.40,0.10
+Nicotine,Nicotine,-10.96,0.08
+dummy,dummy,0.00,0.00
+Epibatidine,Epibatidine,-15.95,0.08
+18-MC,18-MC,32.82,0.25
+SR-16584,SR-16584,-9.10,0.15
+AT-1001,AT-1001,-18.46,0.12

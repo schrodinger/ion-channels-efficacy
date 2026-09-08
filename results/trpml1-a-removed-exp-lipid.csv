@@ -1,0 +1,18 @@
+ligand,ligand_name,pred_dg,pred_dg_error
+compound-1a (R)-ML-SA1,compound-1a,-11.44,0.08
+compound-1b (S)-ML-SA1,compound-1b,-10.11,0.12
+compound-2 ML-SA5,compound-2,-16.95,0.09
+compound-3 C8,compound-3,-17.19,0.12
+compound-4a,compound-4a,-20.12,0.10
+compound-4b aligned to 4a,compound-4b,-18.46,0.19
+compound-5,compound-5,-13.76,0.08
+compound-6 constructed from compound-2,compound-6,-14.48,0.13
+compound-7 constructed from compound-2,compound-7,-17.41,0.13
+compound-8 ML-SI1,compound-8,unstable in binding site,
+compound-9a ML-SI3,compound-9a,-12.98,0.08
+compound-9b aligned to 9a,compound-9b,-12.06,0.17
+compound-9b (+)ML-SI3 from PDB 9EKU,compound-9b,unstable in binding site,
+compound-10,compound-10,-16.38,0.09
+compound-11 EDME,compound-11,unstable in binding site,
+compound-12 PRU-9 constructed from compound-11,compound-12,-11.43,0.11
+compound-13 PRU-12,compound-13,-10.24,0.10

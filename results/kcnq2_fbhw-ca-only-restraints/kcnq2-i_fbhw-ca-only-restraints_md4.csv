@@ -1,0 +1,10 @@
+ligand,ligand_name,pred_dg,pred_dg_error
+RTG from 7CR2,RTG,-9.93,0.07
+RTG-S1 from 7CR2 mod,RTG-S1,-11.68,0.07
+Ebio1 from 8IJK,Ebio1,-10.18,0.08
+Ebio1-S1 from 8X43,Ebio1-S1,-10.88,0.08
+CBD from 8J03,CBD,-9.39,0.15
+HN37 from 8W4U,HN37,-13.49,0.07
+QO-83 from 8XO1,QO-83,-12.75,0.14
+Ebio2 from 9IXY,Ebio2,-13.24,0.08
+Ebio3 from 9IXZ,Ebio3,-11.13,0.09

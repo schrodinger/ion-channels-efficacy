@@ -1,0 +1,20 @@
+ligand,ligand_name,pred_dg,pred_dg_error
+THIP,THIP,-5.46,0.08
+(R)-GABOB,(R)-GABOB,-7.83,0.09
+TPMPA,TPMPA,-6.12,0.17
+GABA,GABA,-6.66,0.09
+CGP36742,CGP36742,-8.97,0.20
+(S)-GABOB,(S)-GABOB,-7.84,0.08
+isonipecotic acid,isonipecotic acid,-4.57,0.13
+5-Me-IAA,5-Me-IAA,-6.32,0.12
+(+)-CAMP,(+)-CAMP,-7.85,0.08
+aza-THIP,aza-THIP,,
+piperidine-4-sulphonic acid,piperidine-4-sulphonic acid,-8.49,0.12
+isoguvacine,isoguvacine,-5.65,0.11
+cis-3-ACPBPA,cis-3-ACPBPA,-5.49,0.19
+trans-3-ACPBPA,trans-3-ACPBPA,-8.56,0.15
+muscimol,muscimol,-7.30,0.12
+CACA,CACA,-5.80,0.10
+aza-THIP_pose1,aza-THIP,-0.58,0.09
+aza-THIP_pose2,aza-THIP,-4.57,0.08
+aza-THIP_pose3,aza-THIP,-4.39,0.08
