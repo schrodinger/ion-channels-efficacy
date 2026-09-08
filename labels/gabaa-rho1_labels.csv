@@ -1,0 +1,18 @@
+ligand,name,label
+(+)-CAMP,(+)-CAMP,agonist
+(R)-GABOB,(R)-GABOB,agonist
+(S)-GABOB,(S)-GABOB,agonist
+5-Me-IAA,5-Me-IAA,agonist
+CACA,CACA,agonist
+CGP36742,CGP36742,antagonist
+GABA,GABA,agonist
+THIP,THIP,antagonist
+TPMPA,TPMPA,antagonist
+aza-THIP,aza-THIP,antagonist
+cis-3-ACPBPA,cis-3-ACPBPA,antagonist
+dummy,dummy,dummy
+isoguvacine,isoguvacine,agonist
+isonipecotic acid,P4C,antagonist
+muscimol,muscimol,agonist
+piperidine-4-sulphonic acid,P4S,antagonist
+trans-3-ACPBPA,trans-3-ACPBPA,antagonist

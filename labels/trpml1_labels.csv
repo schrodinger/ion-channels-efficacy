@@ -1,0 +1,17 @@
+ligand,name,label
+compound-1a,ML-SA1,agonist
+compound-1b,ML-SA1,agonist
+compound-2,ML-SA5,agonist
+compound-3,C8,agonist
+compound-4a,,agonist
+compound-4b,,agonist
+compound-5,,agonist
+compound-6,,agonist
+compound-7,,agonist
+compound-8,ML-SI1,antagonist
+compound-9a,ML-SI3,antagonist
+compound-9b,ML-SI3,antagonist
+compound-10,,antagonist
+compound-11,EDME,antagonist
+compound-12,PRU-9,antagonist
+compound-13,PRU-12,antagonist
