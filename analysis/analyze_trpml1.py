@@ -3,6 +3,7 @@
 from pathlib import Path as _NotebookPath
 import os as _notebook_os
 _notebook_os.chdir(_NotebookPath(__file__).resolve().parent)
+_notebook_os.makedirs("../plots", exist_ok=True)  # output folder for all figures
 
 try:
     from IPython.display import display
@@ -22,19 +23,21 @@ from analysis_utils import combine_dataframes, ddg_barplot, fit_emax_model, leav
 
 
 def clean_unstable_ligands(df):
+    """Set the energies of ligands that are unstable in the binding site in any run to 0 kcal/mol."""
+    marker = 'unstable in binding site'
     ligand_ids = df['ligand'].str.split(' ').str[0]
-    unstable_mask = df.eq('unstable in binding site').any(axis=1)
+    unstable_mask = df.eq(marker).any(axis=1)
     unstable_ligands = set(ligand_ids[unstable_mask])
     if not unstable_ligands:
         return df
 
     df_clean = df.copy()
+    # Columns holding the marker are read as strings; turn the marker into NaN and the column into numbers.
+    for column in df_clean.columns[df_clean.eq(marker).any()]:
+        df_clean[column] = pd.to_numeric(df_clean[column].replace(marker, np.nan))
+    numeric_columns = df_clean.select_dtypes('number').columns
     rows_to_fix = ligand_ids.isin(unstable_ligands)
-    df_clean.loc[rows_to_fix] = (
-        df_clean.loc[rows_to_fix]
-        .replace('unstable in binding site', 0.0)
-        .fillna(0.0)
-    )
+    df_clean.loc[rows_to_fix, numeric_columns] = df_clean.loc[rows_to_fix, numeric_columns].fillna(0.0)
     return df_clean
 
 

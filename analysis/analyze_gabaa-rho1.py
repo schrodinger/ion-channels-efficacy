@@ -3,6 +3,7 @@
 from pathlib import Path as _NotebookPath
 import os as _notebook_os
 _notebook_os.chdir(_NotebookPath(__file__).resolve().parent)
+_notebook_os.makedirs("../plots", exist_ok=True)  # output folder for all figures
 
 import pandas as pd
 import numpy as np

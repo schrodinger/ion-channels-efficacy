@@ -86,7 +86,7 @@ def combine_dataframes(df_a, df_i):
     df_i = df_i.copy()
 
     ligands = list(np.unique(df_a['ligand_name']))
-    df = pd.DataFrame(columns=['Ligand_Name', 'DDG', 'DGA', 'DGI', 'DDG_Error', 'DGA_Error', 'DGI_Error'])
+    rows = []
 
     for ligand in ligands:
         dg_a = pd.to_numeric(
@@ -129,20 +129,17 @@ def combine_dataframes(df_a, df_i):
             ddg = dga - dgi
             ddg_error = np.sqrt(dga_error**2 + dgi_error**2)
 
-        df = pd.concat([
-            df,
-            pd.DataFrame({
-                'Ligand_Name': [ligand],
-                'DDG': [ddg],
-                'DGA': [dga],
-                'DGI': [dgi],
-                'DDG_Error': [ddg_error],
-                'DGA_Error': [dga_error],
-                'DGI_Error': [dgi_error],
-            }),
-        ], ignore_index=True)
+        rows.append({
+            'Ligand_Name': ligand,
+            'DDG': ddg,
+            'DGA': dga,
+            'DGI': dgi,
+            'DDG_Error': ddg_error,
+            'DGA_Error': dga_error,
+            'DGI_Error': dgi_error,
+        })
 
-    return df
+    return pd.DataFrame(rows, columns=['Ligand_Name', 'DDG', 'DGA', 'DGI', 'DDG_Error', 'DGA_Error', 'DGI_Error'])
 
 
 # ======================================================
