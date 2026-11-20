@@ -2,7 +2,7 @@
 
 Supporting materials for our project on ligand efficacy across ion channels: analysis code, machine-readable results, and FEP starting poses. 
 
-The analysis code in the folder analysis reads the results and labels and produces the corresponding plots. For each target, we provide the FEP starting poses as Maestro files (.mae). 
+The analysis code in the folder analysis reads the results and labels and produces the corresponding plots. For each target, we provide the FEP starting poses as Maestro files (.mae). Restraints can be applied to FEP+ via the `-restraints-file` flag (harmonic only) or the custom code maintained [here](https://github.com/schrodinger/fep-restraints).
 
 We have investigated the following targets:
 
