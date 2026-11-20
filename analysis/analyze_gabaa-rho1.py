@@ -50,7 +50,7 @@ _,_ = ddg_barplot(
 _,_ = ddg_barplot(
     df_active_inactive, labels,
     xlabel_mode='none', ligand_names=names,
-    file_name='../plots/gabaa-rho1_barplot_no-labels.png'
+    file_name='../plots/gabaa-rho1_barplot_no-labels'
     )
 
 

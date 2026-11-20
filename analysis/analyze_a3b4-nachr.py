@@ -38,27 +38,27 @@ display(merged_df)
 
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3), errorbars=False, xlabel_mode='none', ylim=(-3, 7),
-    file_name='../plots/a3b4-nachr_barplot_nolabels.png'
+    file_name='../plots/a3b4-nachr_barplot_nolabels'
 )
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3), errorbars=True, xlabel_mode='none', ylim=(-3, 7),
-    file_name='../plots/a3b4-nachr_barplot_nolabels_bennett-error.png'
+    file_name='../plots/a3b4-nachr_barplot_nolabels_bennett-error'
 )
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3), errorbars=True, xlabel_mode='none', constant_errorbar=np.sqrt(2), ylim=(-3, 7),
-    file_name='../plots/a3b4-nachr_barplot_nolabels_constant-error.png'
+    file_name='../plots/a3b4-nachr_barplot_nolabels_constant-error'
 )
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3.5), errorbars=False, xlabel_mode='dict', ligand_names=names, ylim=(-3, 7),
-    file_name='../plots/a3b4-nachr_barplot_ligand-names.png'
+    file_name='../plots/a3b4-nachr_barplot_ligand-names'
 )
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3.5), errorbars=True, xlabel_mode='dict', ligand_names=names, ylim=(-4.5, 8.5),
-    file_name='../plots/a3b4-nachr_barplot_ligand-names_bennett-error.png'
+    file_name='../plots/a3b4-nachr_barplot_ligand-names_bennett-error'
 )
 _,_ = ddg_barplot(
     merged_df, labels, figsize=(4, 3.5), errorbars=True, xlabel_mode='dict', ligand_names=names, ylim=(-4.5, 8.5), constant_errorbar=np.sqrt(2),
-    file_name='../plots/a3b4-nachr_barplot_ligand-names_constant-error.png'
+    file_name='../plots/a3b4-nachr_barplot_ligand-names_constant-error'
 )
 
 
