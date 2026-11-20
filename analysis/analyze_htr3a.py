@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from sklearn.metrics import mean_squared_error, r2_score
-from analysis_utils import combine_dataframes
+from analysis_utils import combine_dataframes, fit_emax_model, leave_one_out_emax, summarize_loo, sigmoid
 
 
 # -------------
@@ -39,59 +39,126 @@ display(data_htr3a)
 # ====================
 
 
-# Prepare the data for plotting
-plot_data = data_htr3a.set_index('Ligand_Name').loc[response.keys()]
-all_respo = np.array(list(response.values()))
-all_ddg = plot_data['DDG'].to_numpy()
-all_ddg_sigma = plot_data['DDG_Error'].to_numpy()
+# ---- Sigmoidal Emax model: data collection, fit and leave-one-out cross-validation ----
 
-# Create the figure and axis for the plot
-fig, ax = plt.subplots(1,1,figsize=[5,3.1], dpi=300) # [5,3.1]
+def collect_emax_data():
+    """Return a DataFrame (Ligand_Name, DDG, DDG_Error, Emax) in the order of the electrophysiology file."""
+    plot_data = data_htr3a.set_index('Ligand_Name').loc[response.keys()]
+    return pd.DataFrame({
+        'Ligand_Name': list(response.keys()),
+        'DDG': plot_data['DDG'].to_numpy(),
+        'DDG_Error': plot_data['DDG_Error'].to_numpy(),
+        'Emax': np.array(list(response.values())),
+    })
 
-# Plot each data point with error bars
-for i, (lig, ddg, sigma, respo) in enumerate(zip(response.keys(), all_ddg, all_ddg_sigma, all_respo)):
-    ax.plot(ddg, respo, 'o', c=f'C{i}', label=lig)
-    ax.errorbar(ddg, respo, xerr=sigma, yerr=0, marker=None, c=f'C{i}')
 
-def sigmoid(x, k, x0, a):
-    return a / (1 + np.exp(-k * (x - x0)))
-k, x0, a = curve_fit(sigmoid, all_ddg, all_respo, p0=[-1, 1, 120])[0]
-print('Sigmoidal fit coefficients:', k, x0, a)
+emax_data = collect_emax_data()
+emax_fit = fit_emax_model(emax_data, plateau='max')
+print(
+    f"Sigmoidal fit (n={emax_fit['n']}): k={emax_fit['k']:.3f} +/- {emax_fit['k_err']:.3f}, "
+    f"x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f}, plateau={emax_fit['a']:.1f} (fixed)"
+)
+print(f"R^2: {emax_fit['r2']:.3f}, RMSE: {emax_fit['rmse']:.2f}, Expected RMSE: {emax_fit['expected_rmse']:.2f}")
 
-predictions = sigmoid(all_ddg, k, x0, a)
-mse = mean_squared_error(all_respo, predictions)
-r2 = r2_score(all_respo, predictions)
-print('R^2:', r2)
-print('RMSE:', np.sqrt(mse))
+loo = leave_one_out_emax(emax_data, plateau='max')
+loo_summary = summarize_loo(loo)
 
-num_samples = 1000
-for n in range(num_samples):
-    sample_ddg = np.random.normal(all_ddg, all_ddg_sigma)
-    sample_response = sigmoid(sample_ddg, k, x0, a)
-    if n == 0:
-        response_samples = sample_response
-    else:
-        response_samples = np.vstack((response_samples, sample_response))
-expected_rmse = np.sqrt(np.mean(np.std(response_samples, axis=0)**2))
-print('Expected RMSE:', expected_rmse)
 
-xgrid = np.arange(-7,7,0.01)
-sfit = sigmoid(xgrid, k, x0, a)
-ax.plot(xgrid, sfit, ':', color='gray', label='Sigmoidal fit', zorder=1)
-sigma = np.sqrt(mse)
-ax.fill_between(xgrid, sfit-2*sigma, sfit+2*sigma, color='gray', alpha=0.1, edgecolor=None)
-ax.fill_between(xgrid, sfit-1*sigma, sfit+1*sigma, color='gray', alpha=0.1, edgecolor=None, zorder=0)
+def plot_max_response_over_ddg(
+    emax_data, emax_fit, loo=None,
+    draw_loo_curves=False, marker_alpha=1.0, fit_linestyle='-',
+    figsize=(5, 3.1), dpi=300, save_as=None,
+):
+    fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
 
-ax.set_ylim(-10,130)
-ax.set_xlim(-5.5,5.5)
-ax.set_ylabel('max. response [%]')
-ax.set_xlabel('$\\Delta \\Delta G$ [kcal/mol]')
-ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-fig.tight_layout()
+    # Plot each data point
+    for i, row in emax_data.iterrows():
+        ax.plot(
+            row['DDG'], row['Emax'], 'o', markeredgewidth=0, c=f'C{i}', alpha=marker_alpha,
+            label=row['Ligand_Name'],
+        )
 
-saveas ='../plots/htr3a_maximum-response'
-fig.savefig(saveas + '.pdf', dpi=300)
-fig.savefig(saveas + '.png', dpi=300)
+    xgrid = np.arange(-7, 7, 0.01)
+    sfit = sigmoid(xgrid, emax_fit['k'], emax_fit['x0'], emax_fit['a'])
+    sigma = emax_fit['rmse']
+    if draw_loo_curves:
+        # Leave-one-out fits: dashed, in the color of the left-out ligand.
+        for i, loo_row in loo.iterrows():
+            ax.plot(
+                xgrid, sigmoid(xgrid, loo_row['k'], loo_row['x0'], loo_row['a']), '--',
+                color=f'C{i}', lw=0.8, zorder=1,
+            )
+    ax.plot(xgrid, sfit, fit_linestyle, color='gray', label='Sigmoidal fit', zorder=0.5)
+    ax.fill_between(xgrid, sfit - 2 * sigma, sfit + 2 * sigma, color='gray', alpha=0.1, edgecolor=None)
+    ax.fill_between(xgrid, sfit - sigma, sfit + sigma, color='gray', alpha=0.1, edgecolor=None, zorder=0)
+
+    ax.set_ylim(-10, 130)
+    ax.set_xlim(-5.5, 5.5)
+    ax.set_ylabel('max. response [%]')
+    ax.set_xlabel('$\\Delta \\Delta G$ [kcal/mol]')
+    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    fig.tight_layout()
+    if save_as is not None:
+        fig.savefig(save_as + '.pdf', dpi=dpi)
+        fig.savefig(save_as + '.png', dpi=dpi)
+    return fig, ax
+
+
+_,_ = plot_max_response_over_ddg(
+    emax_data, emax_fit, loo, draw_loo_curves=True,
+    save_as='../plots/htr3a_maximum-response',
+)
+
+
+# ================================================
+#  Leave-one-out Analysis
+# ================================================
+
+
+def plot_loo_max_response(loo, loo_summary, marker_alpha=1.0, figsize=(5, 3.1), dpi=300, save_as=None):
+    fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+    failed_ligands = list(loo.loc[loo['Emax_pred_loo'].isna(), 'Ligand_Name'])
+
+    for i, row in loo.iterrows():
+        ax.plot(
+            row['Emax'], row['Emax_pred_loo'], 'o', markeredgewidth=0, c=f'C{i}', alpha=marker_alpha,
+            label=row['Ligand_Name'],
+        )
+
+    # Identity line with +/- 1 and +/- 2 LOO-RMSE bands.
+    x_line = np.array([-20, 140])
+    sigma = loo_summary['rmse']
+    ax.plot(x_line, x_line, '-', color='gray', zorder=0.5)
+    ax.fill_between(x_line, x_line - sigma, x_line + sigma, color='gray', alpha=0.1, edgecolor=None, zorder=0)
+    ax.fill_between(x_line, x_line - 2 * sigma, x_line + 2 * sigma, color='gray', alpha=0.1, edgecolor=None)
+
+    ax.set_xlim(-10, 130)
+    ax.set_ylim(-10, 130)
+    ax.set_xlabel('Exp. max. response [%]')
+    ax.set_ylabel('LOO predicted max. response [%]')
+    ax.text(
+        0.05, 0.94,
+        f"n = {loo_summary['n']}\nLOO RMSE: {loo_summary['rmse']:.1f} %\nLOO Q$^2$: {loo_summary['q2']:.2f}"
+        + (f"\nno LOO fit: {', '.join(failed_ligands)}" if failed_ligands else ''),
+        transform=ax.transAxes, ha='left', va='top', fontsize=10,
+        bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', boxstyle='round,pad=0.25'),
+    )
+    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    fig.tight_layout()
+    if save_as is not None:
+        fig.savefig(save_as + '.pdf', dpi=dpi)
+        fig.savefig(save_as + '.png', dpi=dpi)
+    return fig, ax
+
+
+print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'k', 'x0', 'a']].round(2).to_string(index=False))
+print(
+    f"Leave-one-out (n={loo_summary['n']}, failed={loo_summary['n_failed']}): "
+    f"RMSE={loo_summary['rmse']:.2f}, MAE={loo_summary['mae']:.2f}, Q^2={loo_summary['q2']:.3f} "
+    f"(fit on all ligands: RMSE={emax_fit['rmse']:.2f}, R^2={emax_fit['r2']:.3f})"
+)
+
+_,_ = plot_loo_max_response(loo, loo_summary, save_as='../plots/htr3a_maximum-response_loo')
 
 
 # ====================

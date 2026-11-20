@@ -12,9 +12,8 @@ except ImportError:
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
 from sklearn.metrics import mean_squared_error, r2_score
-from analysis_utils import combine_dataframes, ddg_barplot
+from analysis_utils import combine_dataframes, ddg_barplot, fit_emax_model, leave_one_out_emax, summarize_loo, sigmoid
 
 
 # ======================
@@ -151,17 +150,47 @@ excluded_ligands = set(trpml1_electrophysiology.loc[agonist_gt30 & antagonist_gt
 print('Excluded from Emax fit (EC50 and IC50 both >30 uM):', sorted(excluded_ligands))
 
 
+# ---- Sigmoidal Emax model: data collection, fit and leave-one-out cross-validation ----
+
+def collect_emax_data(experimental_emax_dict, excluded_ligands):
+    """Return a DataFrame (Ligand_Name, DDG, DDG_Error, Emax) of the ligands used for fitting."""
+    rows = []
+    for ligand in set(df['Ligand_Name']) & set(experimental_emax_dict):
+        if ligand in excluded_ligands:
+            continue
+        ligand_row = df[df['Ligand_Name'] == ligand]
+        values = [
+            pd.to_numeric(ligand_row['DDG'], errors='coerce').iloc[0],
+            pd.to_numeric(ligand_row['DDG_Error'], errors='coerce').iloc[0],
+            pd.to_numeric(pd.Series([experimental_emax_dict[ligand]]), errors='coerce').iloc[0],
+        ]
+        if all(np.isfinite(v) for v in values):
+            rows.append([ligand, *values])
+    data = pd.DataFrame(rows, columns=['Ligand_Name', 'DDG', 'DDG_Error', 'Emax'])
+    return data.sort_values('Ligand_Name').reset_index(drop=True)
+
+
+emax_data = collect_emax_data(experimental_emax_dict, excluded_ligands)
+emax_fit = fit_emax_model(emax_data, plateau=100)
+print(
+    f"Sigmoidal fit (n={emax_fit['n']}): "
+    f"k={emax_fit['k']:.3f} +/- {emax_fit['k_err']:.3f}, x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f}"
+)
+print(f"R^2: {emax_fit['r2']:.3f}, RMSE: {emax_fit['rmse']:.2f}, Expected RMSE: {emax_fit['expected_rmse']:.2f}")
+
+loo = leave_one_out_emax(emax_data, plateau=100)
+loo_summary = summarize_loo(loo)
+
+
 def plot_max_response_over_ddg(
-    experimental_emax_dict, excluded_ligands,
+    experimental_emax_dict, excluded_ligands, emax_fit, loo=None,
     color_by_class=False, draw_excluded_ligands=True,
-    draw_legend=True, difference_label=False,
+    draw_legend=True, difference_label=False, draw_loo_curves=False,
+    marker_alpha=1.0, fit_linestyle='-',
     xlim=[-11, 6], figsize=(4.8, 3.1), dpi=300,
     save_as=None,
 ):
     fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
-    all_respo = []
-    all_ddg = []
-    all_ddg_sigma = []
 
     def ligand_natural_key(lig):
         token = str(lig).split('-', 1)[-1].lower()
@@ -207,11 +236,7 @@ def plot_max_response_over_ddg(
             continue
 
         is_excluded = ligand in excluded_ligands
-        if not is_excluded:
-            all_respo.append(ligand_response)
-            all_ddg.append(ligand_ddg)
-            all_ddg_sigma.append(ligand_ddg_sigma)
-        elif not draw_excluded_ligands:
+        if is_excluded and not draw_excluded_ligands:
             continue
 
         if is_excluded:
@@ -234,8 +259,7 @@ def plot_max_response_over_ddg(
             color = ligand_colors[ligand]
 
         print(f'{ligand}: {ligand_ddg:.3f} +/- {ligand_ddg_sigma:.3f}, {ligand_response:.1f}')
-        ax.plot(ligand_ddg, ligand_response, marker=marker, linestyle='None', c=color, label=legend_name)
-        ax.errorbar(ligand_ddg, ligand_response, xerr=ligand_ddg_sigma, yerr=0, fmt='none', c=color)
+        ax.plot(ligand_ddg, ligand_response, marker=marker, markeredgewidth=0, linestyle='None', c=color, alpha=marker_alpha, label=legend_name)
 
     if color_by_class:
         from matplotlib.lines import Line2D
@@ -250,34 +274,19 @@ def plot_max_response_over_ddg(
         unique = dict(zip(legend_labels, handles))
         ax.legend(unique.values(), unique.keys(), loc='upper left', bbox_to_anchor=(1, 1), fontsize=8)
 
-    def sigmoid(x, k, x0):
-        return 100 / (1 + np.exp(-k * (x - x0)))
-
-    if len(all_ddg) >= 3:
-        k, x0 = curve_fit(sigmoid, all_ddg, all_respo, p0=[-1, 1])[0]
-        print(f'Sigmoidal fit coefficients: k={k:.3f}, x0={x0:.3f}')
-        predictions = sigmoid(np.array(all_ddg), k, x0)
-        mse = mean_squared_error(all_respo, predictions)
-        r2 = r2_score(all_respo, predictions)
-        print('R^2:', r2)
-        print('RMSE:', np.sqrt(mse))
-
-        num_samples = 1000
-        response_samples = np.array([
-            sigmoid(np.random.normal(all_ddg, all_ddg_sigma), k, x0)
-            for _ in range(num_samples)
-        ])
-        expected_rmse = np.sqrt(np.mean(np.std(response_samples, axis=0) ** 2))
-        print('Expected RMSE:', expected_rmse)
-
-        xgrid = np.arange(-12, 8, 0.01)
-        sfit = sigmoid(xgrid, k, x0)
-        ax.plot(xgrid, sfit, ':', color='gray', label='Sigmoidal fit', zorder=1)
-        sigma = np.sqrt(mse)
-        ax.fill_between(xgrid, sfit - 2 * sigma, sfit + 2 * sigma, color='gray', alpha=0.1, edgecolor=None)
-        ax.fill_between(xgrid, sfit - sigma, sfit + sigma, color='gray', alpha=0.1, edgecolor=None, zorder=0)
-    else:
-        print('Not enough points for sigmoid fit (need at least 3).')
+    xgrid = np.arange(-12, 8, 0.01)
+    sfit = sigmoid(xgrid, emax_fit['k'], emax_fit['x0'], emax_fit['a'])
+    sigma = emax_fit['rmse']
+    if draw_loo_curves:
+        # Leave-one-out fits: dashed, in the color of the left-out ligand.
+        for _, loo_row in loo.iterrows():
+            ax.plot(
+                xgrid, sigmoid(xgrid, loo_row['k'], loo_row['x0'], loo_row['a']), '--',
+                color=ligand_colors[loo_row['Ligand_Name']], lw=0.8, zorder=1,
+            )
+    ax.plot(xgrid, sfit, fit_linestyle, color='gray', label='Sigmoidal fit', zorder=0.5)
+    ax.fill_between(xgrid, sfit - 2 * sigma, sfit + 2 * sigma, color='gray', alpha=0.1, edgecolor=None)
+    ax.fill_between(xgrid, sfit - sigma, sfit + sigma, color='gray', alpha=0.1, edgecolor=None, zorder=0)
 
     ax.set_xlim(xlim)
     ax.set_ylim(-10, 110)
@@ -294,18 +303,98 @@ def plot_max_response_over_ddg(
 
 
 _,_ = plot_max_response_over_ddg(
-    experimental_emax_dict, excluded_ligands,
-    color_by_class=False, draw_excluded_ligands=True,
+    experimental_emax_dict, excluded_ligands, emax_fit, loo,
+    color_by_class=False, draw_excluded_ligands=True, draw_loo_curves=True,
     xlim=[-8.5, 6],
     save_as='../plots/trpml1_max_response_over_ddg',
 )
 
 _,_ = plot_max_response_over_ddg(
-    experimental_emax_dict, excluded_ligands,
+    experimental_emax_dict, excluded_ligands, emax_fit, loo,
     color_by_class=True, draw_excluded_ligands=False, draw_legend=False, difference_label=True,
+    marker_alpha=1.0, fit_linestyle=':',
     xlim=[-9, 6], figsize=(2.75, 3),
     save_as='../plots/trpml1_max_response_over_ddg_toc',
 )
+
+
+# ================================================
+#  Leave-one-out Analysis Plot
+# ================================================
+
+
+def plot_loo_max_response(loo, loo_summary, save_as=None):
+    fig, ax = plt.subplots(1, 1, figsize=[4.8, 3.1], dpi=300)
+
+    def ligand_natural_key(lig):
+        token = str(lig).split('-', 1)[-1].lower()
+        i = 0
+        while i < len(token) and token[i].isdigit():
+            i += 1
+        number = int(token[:i]) if i > 0 else float('inf')
+        return (number, token[i:], token)
+
+    # Same ligand ordering and color mapping as in the Emax plot.
+    ligands_for_plot = [
+        lig
+        for lig in sorted(set(df['Ligand_Name']) & set(experimental_emax_dict), key=ligand_natural_key)
+        if lig not in excluded_ligands
+    ]
+    palette = plt.get_cmap('tab20')
+    ligand_colors = {lig: palette(i / palette.N) for i, lig in enumerate(ligands_for_plot)}
+
+    for _, row in loo.sort_values('Ligand_Name', key=lambda c: c.map(ligand_natural_key)).iterrows():
+        ligand = row['Ligand_Name']
+        if labels.get(ligand) == 'agonist':
+            marker = 'o'
+        elif labels.get(ligand) == 'antagonist':
+            marker = 's'
+        else:
+            marker = '^'
+        ax.scatter(
+            row['Emax'], row['Emax_pred_loo'], c=[ligand_colors[ligand]], marker=marker, s=55,
+            edgecolors='none', label=ligand.replace('compound-', 'cpd-'), zorder=3,
+        )
+
+    # Identity line with +/- 1 and +/- 2 LOO-RMSE bands.
+    x_line = np.array([-15, 115])
+    sigma = loo_summary['rmse']
+    ax.plot(x_line, x_line, color='gray', lw=1.5, linestyle=':', zorder=0)
+    ax.fill_between(x_line, x_line - sigma, x_line + sigma, color='gray', alpha=0.1, linewidth=0, zorder=-1)
+    ax.fill_between(x_line, x_line - 2 * sigma, x_line + 2 * sigma, color='gray', alpha=0.1, linewidth=0, zorder=-2)
+
+    ax.set_xlim(-10, 110)
+    ax.set_ylim(-10, 110)
+    ax.set_xlabel('Exp. max. response [%]')
+    ax.set_ylabel('LOO predicted max. response [%]')
+    ax.text(
+        0.05, 0.94,
+        f"n = {loo_summary['n']}\nLOO RMSE: {loo_summary['rmse']:.1f} %\nLOO Q$^2$: {loo_summary['q2']:.2f}",
+        transform=ax.transAxes, ha='left', va='top', fontsize=10,
+        bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', boxstyle='round,pad=0.25'),
+    )
+
+    handles, legend_labels = ax.get_legend_handles_labels()
+    unique = dict(zip(legend_labels, handles))
+    ax.legend(unique.values(), unique.keys(), loc='upper left', bbox_to_anchor=(1, 1), fontsize=8)
+
+    fig.tight_layout()
+    if save_as is not None:
+        fig.savefig(save_as + '.pdf', dpi=300)
+        fig.savefig(save_as + '.png', dpi=300)
+    return fig, ax
+
+
+print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'k', 'x0']].round(2).to_string(index=False))
+print(
+    f"Leave-one-out (n={loo_summary['n']}): RMSE={loo_summary['rmse']:.2f}, "
+    f"MAE={loo_summary['mae']:.2f}, Q^2={loo_summary['q2']:.3f} "
+    f"(fit on all ligands: RMSE={emax_fit['rmse']:.2f}, R^2={emax_fit['r2']:.3f})"
+)
+print(f"LOO parameter ranges: k in [{loo['k'].min():.2f}, {loo['k'].max():.2f}], x0 in [{loo['x0'].min():.2f}, {loo['x0'].max():.2f}]")
+
+_,_ = plot_loo_max_response(loo, loo_summary, save_as='../plots/trpml1_max_response_loo')
+
 
 
 # =================================================
@@ -512,9 +601,4 @@ plot_experimental_vs_predicted_binding(
     add_lower_bound_arrows=True,
     include_excluded_with_missing_x=True,
  )
-
-
-# ================================================
-#  Leave-one-out Analysis
-# ================================================
 
