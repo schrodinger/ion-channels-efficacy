@@ -1,4 +1,3 @@
-# Generated from Analysis-a3b4-nAChR.ipynb.
 # The working directory is set to this script's directory so ../ paths resolve to the repository root.
 from pathlib import Path as _NotebookPath
 import os as _notebook_os
@@ -52,7 +51,6 @@ for study, (file_a, file_i) in studies.items():
 
     merged_by_study[study] = merged_df
 
-    # Classification metrics: agonist (positive) vs antagonist.
     # Lower DDG means more agonist-like, so the score is -DDG; absolute accuracy uses DDG < 0 as agonist.
     classified = merged_df[merged_df['Ligand_Name'].map(labels).isin(['agonist', 'antagonist'])]
     y_true = (classified['Ligand_Name'].map(labels) == 'agonist').astype(int).values
@@ -66,8 +64,8 @@ display(metrics_df)
 
 # Joint figure: one panel per restraint force constant, shared y axis.
 force_constants = {
-    'default-restraints': r'$\mathbfit{f}_\mathbfit{c}$ = 10 kcal/mol',
-    'weak-restraints-bw00-f01': r'$\mathbfit{f}_\mathbfit{c}$ = 1 kcal/mol',
+    'default-restraints': r'$\mathbfit{f}_\mathbfit{c}$ = 10 kcal mol$^{-1}$ Å$^{-2}$',
+    'weak-restraints-bw00-f01': r'$\mathbfit{f}_\mathbfit{c}$ = 1 kcal mol$^{-1}$ Å$^{-2}$',
     'no-restraints': r'$\mathbfit{f}_\mathbfit{c}$ = 0 (no restraints)',
 }
 auc_by_study = metrics_df.set_index('study')['AUC-ROC'].to_dict()
