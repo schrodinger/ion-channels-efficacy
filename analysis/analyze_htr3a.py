@@ -56,8 +56,8 @@ def collect_emax_data():
 emax_data = collect_emax_data()
 emax_fit = fit_emax_model(emax_data, plateau='max')
 print(
-    f"Sigmoidal fit (n={emax_fit['n']}): k={emax_fit['k']:.3f} +/- {emax_fit['k_err']:.3f}, "
-    f"x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f}, plateau={emax_fit['a']:.1f} (fixed)"
+    f"Sigmoidal fit (n={emax_fit['n']}): x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f} kcal/mol, "
+    f"kT={emax_fit['kT']:.2f} kcal/mol (fixed), plateau={emax_fit['a']:.1f} (fixed)"
 )
 print(f"R^2: {emax_fit['r2']:.3f}, RMSE: {emax_fit['rmse']:.2f}, Expected RMSE: {emax_fit['expected_rmse']:.2f}")
 
@@ -80,13 +80,13 @@ def plot_max_response_over_ddg(
         )
 
     xgrid = np.arange(-7, 7, 0.01)
-    sfit = sigmoid(xgrid, emax_fit['k'], emax_fit['x0'], emax_fit['a'])
+    sfit = sigmoid(xgrid, emax_fit['x0'], emax_fit['a'])
     sigma = emax_fit['rmse']
     if draw_loo_curves:
         # Leave-one-out fits: dashed, in the color of the left-out ligand.
         for i, loo_row in loo.iterrows():
             ax.plot(
-                xgrid, sigmoid(xgrid, loo_row['k'], loo_row['x0'], loo_row['a']), '--',
+                xgrid, sigmoid(xgrid, loo_row['x0'], loo_row['a']), '--',
                 color=f'C{i}', lw=0.8, zorder=1,
             )
     ax.plot(xgrid, sfit, fit_linestyle, color='gray', label='Sigmoidal fit', zorder=0.5)
@@ -152,7 +152,7 @@ def plot_loo_max_response(loo, loo_summary, marker_alpha=1.0, figsize=(5, 3.1), 
     return fig, ax
 
 
-print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'k', 'x0', 'a']].round(2).to_string(index=False))
+print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'x0', 'a']].round(2).to_string(index=False))
 print(
     f"Leave-one-out (n={loo_summary['n']}, failed={loo_summary['n_failed']}): "
     f"RMSE={loo_summary['rmse']:.2f}, MAE={loo_summary['mae']:.2f}, Q^2={loo_summary['q2']:.3f} "
@@ -165,6 +165,9 @@ _,_ = plot_loo_max_response(loo, loo_summary, save_as='../plots/htr3a_maximum-re
 # ====================
 # Binding Affinity
 # ====================
+
+
+dg_fit_info = {}  # filled by plot_dg_comparison, keyed by plot variant
 
 
 def plot_dg_comparison(df_for_plot, ki, column="MIN(DG)", save_as=None, dpi=300):
@@ -205,6 +208,11 @@ def plot_dg_comparison(df_for_plot, ki, column="MIN(DG)", save_as=None, dpi=300)
 
     popt, pcov = curve_fit(linear_func, dg_exp, dg_fep)
     print(popt)
+    dg_fit_info[save_as.split('_dg_scatter_')[-1] if save_as else column] = {
+        'n': len(dg_exp),
+        'offset_kcal_mol': float(popt[0]),
+        'offset_err_kcal_mol': float(np.sqrt(pcov[0, 0])),
+    }
     ax.plot([-17, -7], [-17, -7], '-', color='black', alpha=1, linewidth=1, zorder=-2)
     x_vals = np.array(ax.get_xlim())
     y_vals = linear_func(x_vals, *popt)
@@ -225,6 +233,9 @@ def plot_dg_comparison(df_for_plot, ki, column="MIN(DG)", save_as=None, dpi=300)
     r2 = r2_score(dg_fep, linear_func(np.array(dg_exp), *popt))
     ax.text(0.05, 0.875, f'$R^2$ = {r2:.2f}', transform=ax.transAxes, fontsize=10, verticalalignment='top')
     print(f'$R^2$ = {r2:.2f}')
+    dg_fit_info[save_as.split('_dg_scatter_')[-1] if save_as else column].update(
+        {'rmse_kcal_mol': float(rmse), 'r2': float(r2)}
+    )
     fig.tight_layout()
     if save_as is not None:
         fig.savefig(save_as + '.png', dpi=dpi, format='png')
@@ -242,3 +253,34 @@ fig_all, ax = plot_dg_comparison(df_for_plot, ki, column="all", save_as='../plot
 #fig_min, ax = plot_dg_comparison(df_for_plot, ki, column="MIN(DG)", save_as='../plots/htr3a_dg_scatter_min')
 fig_a, ax = plot_dg_comparison(df_for_plot, ki, column="DGA", save_as='../plots/htr3a_dg_scatter_8fsb')
 fig_b, ax = plot_dg_comparison(df_for_plot, ki, column="DGI", save_as='../plots/htr3a_dg_scatter_6w1y')
+
+
+# ====================
+# Save fit info
+# ====================
+
+import json
+
+
+def _to_builtin(obj):
+    return obj.item() if isinstance(obj, np.generic) else obj
+
+
+fit_info = {
+    'maximum_response': {
+        'plot_files': ['htr3a_maximum-response', 'htr3a_maximum-response_loo'],
+        'sigmoidal_fit': {key: _to_builtin(value) for key, value in emax_fit.items()},
+        'sigmoidal_fit_plateau': 'fixed to max',
+        'leave_one_out': {key: _to_builtin(value) for key, value in loo_summary.items()},
+        'leave_one_out_per_ligand': json.loads(
+            loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'x0', 'a']].to_json(orient='records')
+        ),
+    },
+    'binding_affinity': {
+        'plot_files': [f'htr3a_dg_scatter_{key}' for key in dg_fit_info],
+        'model': 'dG_FEP = dG_exp + offset',
+        'fits': dg_fit_info,
+    },
+}
+with open('../plots/htr3a_fit-info.json', 'w') as f:
+    json.dump(fit_info, f, indent=2)

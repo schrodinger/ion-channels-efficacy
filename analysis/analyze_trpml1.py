@@ -177,7 +177,7 @@ emax_data = collect_emax_data(experimental_emax_dict, excluded_ligands)
 emax_fit = fit_emax_model(emax_data, plateau=100)
 print(
     f"Sigmoidal fit (n={emax_fit['n']}): "
-    f"k={emax_fit['k']:.3f} +/- {emax_fit['k_err']:.3f}, x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f}"
+    f"x0={emax_fit['x0']:.3f} +/- {emax_fit['x0_err']:.3f} kcal/mol, kT={emax_fit['kT']:.2f} kcal/mol (fixed)"
 )
 print(f"R^2: {emax_fit['r2']:.3f}, RMSE: {emax_fit['rmse']:.2f}, Expected RMSE: {emax_fit['expected_rmse']:.2f}")
 
@@ -278,13 +278,13 @@ def plot_max_response_over_ddg(
         ax.legend(unique.values(), unique.keys(), loc='upper left', bbox_to_anchor=(1, 1), fontsize=8)
 
     xgrid = np.arange(-12, 8, 0.01)
-    sfit = sigmoid(xgrid, emax_fit['k'], emax_fit['x0'], emax_fit['a'])
+    sfit = sigmoid(xgrid, emax_fit['x0'], emax_fit['a'])
     sigma = emax_fit['rmse']
     if draw_loo_curves:
         # Leave-one-out fits: dashed, in the color of the left-out ligand.
         for _, loo_row in loo.iterrows():
             ax.plot(
-                xgrid, sigmoid(xgrid, loo_row['k'], loo_row['x0'], loo_row['a']), '--',
+                xgrid, sigmoid(xgrid, loo_row['x0'], loo_row['a']), '--',
                 color=ligand_colors[loo_row['Ligand_Name']], lw=0.8, zorder=1,
             )
     ax.plot(xgrid, sfit, fit_linestyle, color='gray', label='Sigmoidal fit', zorder=0.5)
@@ -388,13 +388,13 @@ def plot_loo_max_response(loo, loo_summary, save_as=None):
     return fig, ax
 
 
-print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'k', 'x0']].round(2).to_string(index=False))
+print(loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'x0']].round(2).to_string(index=False))
 print(
     f"Leave-one-out (n={loo_summary['n']}): RMSE={loo_summary['rmse']:.2f}, "
     f"MAE={loo_summary['mae']:.2f}, Q^2={loo_summary['q2']:.3f} "
     f"(fit on all ligands: RMSE={emax_fit['rmse']:.2f}, R^2={emax_fit['r2']:.3f})"
 )
-print(f"LOO parameter ranges: k in [{loo['k'].min():.2f}, {loo['k'].max():.2f}], x0 in [{loo['x0'].min():.2f}, {loo['x0'].max():.2f}]")
+print(f"LOO parameter range: x0 in [{loo['x0'].min():.2f}, {loo['x0'].max():.2f}]")
 
 _,_ = plot_loo_max_response(loo, loo_summary, save_as='../plots/trpml1_max_response_loo')
 
@@ -403,6 +403,9 @@ _,_ = plot_loo_max_response(loo, loo_summary, save_as='../plots/trpml1_max_respo
 # =================================================
 # Experimental vs predicted binding free energy
 # =================================================
+
+
+binding_fit_info = {}  # filled by plot_experimental_vs_predicted_binding, keyed by plot variant
 
 
 def plot_experimental_vs_predicted_binding(
@@ -525,6 +528,14 @@ def plot_experimental_vs_predicted_binding(
         fit_rmse = np.sqrt(mean_squared_error(np.array(y_fit), fit_pred))
         stats_label = f'RMSE: {fit_rmse:.2f} kcal/mol\nR$^2$: {fit_r2:.2f}'
         print(f"{x_column}: Linear fit R^2: {fit_r2:.3f}, RMSE: {fit_rmse:.3f} kcal/mol")
+        binding_fit_info[save_as.split('trpml1_')[-1] if save_as else x_column] = {
+            'x_column': x_column,
+            'n': len(x_fit),
+            'slope': float(slope),
+            'intercept_kcal_mol': float(intercept),
+            'rmse_kcal_mol': float(fit_rmse),
+            'r2': float(fit_r2),
+        }
     else:
         print(f"{x_column}: Not enough non-excluded points for linear fit (need at least 2).")
 
@@ -605,3 +616,37 @@ plot_experimental_vs_predicted_binding(
     include_excluded_with_missing_x=True,
  )
 
+
+
+# ====================
+# Save fit info
+# ====================
+
+import json
+
+
+def _to_builtin(obj):
+    return obj.item() if isinstance(obj, np.generic) else obj
+
+
+fit_info = {
+    'maximum_response': {
+        'plot_files': [
+            'trpml1_max_response_over_ddg', 'trpml1_max_response_over_ddg_toc', 'trpml1_max_response_loo',
+        ],
+        'sigmoidal_fit': {key: _to_builtin(value) for key, value in emax_fit.items()},
+        'sigmoidal_fit_plateau': 'fixed to 100',
+        'excluded_ligands': sorted(excluded_ligands),
+        'leave_one_out': {key: _to_builtin(value) for key, value in loo_summary.items()},
+        'leave_one_out_per_ligand': json.loads(
+            loo[['Ligand_Name', 'DDG', 'Emax', 'Emax_pred_loo', 'error', 'x0', 'a']].to_json(orient='records')
+        ),
+    },
+    'binding_affinity': {
+        'plot_files': [f'trpml1_{key}' for key in binding_fit_info],
+        'model': 'dG_pred = slope * x + intercept (non-excluded ligands)',
+        'fits': binding_fit_info,
+    },
+}
+with open('../plots/trpml1_fit-info.json', 'w') as f:
+    json.dump(fit_info, f, indent=2)

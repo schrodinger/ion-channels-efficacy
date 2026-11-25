@@ -146,44 +146,49 @@ def combine_dataframes(df_a, df_i):
 # Sigmoidal max. response model: fit and leave-one-out
 # ======================================================
 #
-# Model: Emax = a / (1 + exp(-k * (DDG - x0))). The plateau `a` is not fitted. It is either fixed to a
-# given number (e.g. 100) or, with plateau='max', set to the largest measured Emax of the ligands
-# used in the fit. The `data` DataFrames have the columns Ligand_Name, DDG, DDG_Error and Emax.
+# Model: Emax = a / (1 + exp((DDG - x0) / kT)). The steepness is fixed to the thermal energy kT (a
+# Boltzmann two-state switch), so x0 is the only fitted parameter. The response rises as DDG becomes
+# more negative. The plateau `a` is not fitted. It is either fixed to a given number (e.g. 100) or,
+# with plateau='max', set to the largest measured Emax of the ligands used in the fit. The `data`
+# DataFrames have the columns Ligand_Name, DDG, DDG_Error and Emax.
+
+TEMPERATURE = 300.0  # K, simulation temperature
+KT = 0.0019872041 * TEMPERATURE  # kcal/mol (R = 0.0019872 kcal/(mol K)), about 0.596
 
 
-def sigmoid(x, k, x0, a):
-    return a / (1 + np.exp(-k * (x - x0)))
+def sigmoid(x, x0, a):
+    return a / (1 + np.exp((x - x0) / KT))
 
 
-def fit_sigmoid(ddg, emax, plateau, p0=(-1, 1)):
-    """Least-squares fit of the two-parameter sigmoid (k, x0) with a fixed plateau.
+def fit_sigmoid(ddg, emax, plateau, p0=None):
+    """Least-squares fit of the midpoint x0 of the sigmoid with fixed steepness (kT) and plateau.
 
     `plateau` is a number or 'max' (largest value in `emax`). With 'max', a ligand that exceeds all
-    others is an overshoot of the model's ceiling. Returns (k, x0), their covariance matrix and the
-    plateau that was used.
+    others is an overshoot of the model's ceiling. Returns x0, its variance and the plateau used.
     """
     if isinstance(plateau, str):
         if plateau != 'max':
             raise ValueError("plateau must be a number or 'max'")
         plateau = np.max(emax)
-    params, pcov = curve_fit(lambda x, k, x0: sigmoid(x, k, x0, plateau), ddg, emax, p0=p0)
-    return params, pcov, plateau
+    if p0 is None:
+        p0 = np.median(ddg)
+    params, pcov = curve_fit(lambda x, x0: sigmoid(x, x0, plateau), ddg, emax, p0=p0)
+    return params[0], pcov[0, 0], plateau
 
 
 def fit_emax_model(data, plateau, num_samples=1000, seed=0):
     """Fit the sigmoid to all ligands in `data` and collect summary statistics."""
     ddg, emax, ddg_sigma = data['DDG'].to_numpy(), data['Emax'].to_numpy(), data['DDG_Error'].to_numpy()
-    params, pcov, plateau = fit_sigmoid(ddg, emax, plateau)
-    param_errors = np.sqrt(np.diag(pcov))
-    predictions = sigmoid(ddg, *params, plateau)
+    x0, x0_var, plateau = fit_sigmoid(ddg, emax, plateau)
+    predictions = sigmoid(ddg, x0, plateau)
     rng = np.random.default_rng(seed)
     response_samples = np.array([
-        sigmoid(rng.normal(ddg, ddg_sigma), *params, plateau) for _ in range(num_samples)
+        sigmoid(rng.normal(ddg, ddg_sigma), x0, plateau) for _ in range(num_samples)
     ])
     return {
         'n': len(data),
-        'k': params[0], 'k_err': param_errors[0],
-        'x0': params[1], 'x0_err': param_errors[1],
+        'x0': x0, 'x0_err': np.sqrt(x0_var),
+        'kT': KT,
         'a': plateau,
         'r2': r2_score(emax, predictions),
         'rmse': np.sqrt(mean_squared_error(emax, predictions)),
@@ -202,15 +207,15 @@ def leave_one_out_emax(data, plateau):
     for i, ligand in enumerate(data['Ligand_Name']):
         train = data.drop(index=i)
         try:
-            (k, x0), _, train_plateau = fit_sigmoid(train['DDG'], train['Emax'], plateau)
+            x0, _, train_plateau = fit_sigmoid(train['DDG'], train['Emax'], plateau)
         except RuntimeError:  # fit did not converge
-            k, x0, train_plateau = np.nan, np.nan, np.nan
+            x0, train_plateau = np.nan, np.nan
         rows.append({
             'Ligand_Name': ligand,
             'DDG': data.at[i, 'DDG'],
             'Emax': data.at[i, 'Emax'],
-            'Emax_pred_loo': sigmoid(data.at[i, 'DDG'], k, x0, train_plateau),
-            'k': k, 'x0': x0, 'a': train_plateau,
+            'Emax_pred_loo': sigmoid(data.at[i, 'DDG'], x0, train_plateau),
+            'x0': x0, 'a': train_plateau,
         })
     result = pd.DataFrame(rows)
     result['error'] = result['Emax_pred_loo'] - result['Emax']
